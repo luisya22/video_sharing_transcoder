@@ -1,0 +1,19 @@
+[package]
+name = "video_sharing_transcoder"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.1.1", features = ["derive"] }
+gstreamer = "0.19.7"
+rust-s3 = "0.32.3"
+tokio = {version = "1.24.2", features = ["full"]}
+async-trait = "0.1.63"
+lapin = "1.8.0"
+tokio-amqp = "1.0.0"
+thiserror = "1.0.30"
+deadpool = "0.9.0"
+deadpool-lapin = "0.9.0"
+futures = {version = "0.3.17", default-features = true}
