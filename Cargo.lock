@@ -1915,6 +1915,8 @@ dependencies = [
  "gstreamer",
  "lapin",
  "rust-s3",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-amqp",

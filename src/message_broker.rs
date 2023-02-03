@@ -4,13 +4,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use async_trait::async_trait;
 use deadpool_lapin::{Manager, Pool, PoolError};
-use futures::{AsyncBufRead, StreamExt};
+use futures::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, QueueDeclareOptions};
 use lapin::types::FieldTable;
 use thiserror::Error as ThisError;
 use crate::filestore::FileStore;
 use lapin::ConnectionProperties;
+use tokio::io::AsyncRead;
 use tokio_amqp::LapinTokioExt;
+use crate::video::Video;
+use serde_json::Error as SerdeJsonError;
 
 type RMQResult<T> = Result<T, PoolError>;
 type Connection = deadpool::managed::Object<deadpool_lapin::Manager>;
@@ -18,9 +21,13 @@ type Connection = deadpool::managed::Object<deadpool_lapin::Manager>;
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error("rmq error: {0}")]
-    RMQError(#[from] lapin::Error),
+    Rmq(#[from] lapin::Error),
+
     #[error("rmq pool error: {0}")]
-    RMQPoolError(#[from] PoolError)
+    RMQPool(#[from] PoolError),
+
+    #[error("serde json error: {0}")]
+    SerdeJson(#[from] SerdeJsonError)
 }
 
 #[async_trait]
@@ -28,14 +35,14 @@ pub trait MessageBroker {
    async fn listen(&self) -> Result<(), Error>;
 }
 
-pub struct RabbitMq {
+pub struct RabbitMq<R: AsyncRead + Unpin + Send> {
     pub pool: Pool,
     pub queue_name: String,
-    pub processor: fn(&str, Arc<dyn FileStore + Send + Sync>),
-    pub file_store: Arc<dyn FileStore + Send + Sync>
+    pub processor: fn(&Video, Arc<dyn FileStore<R> + Send + Sync>),
+    pub file_store: Arc<dyn FileStore<R> + Send + Sync>
 }
 
-impl RabbitMq {
+impl<R: AsyncRead + Unpin + Send> RabbitMq<R> {
     async fn get_rmq_con(&self) ->RMQResult<Connection> {
         let connection = self.pool.get().await?;
 
@@ -79,15 +86,9 @@ impl RabbitMq {
 
                 let data = delivery.data;
 
-                let s = match std::str::from_utf8(&data){
-                    Ok(v) => v,
-                    _ => ""
-                };
+                let video_data: Video = serde_json::from_slice(&data)?;
 
-                println!("data str: {:?}", s);
-
-
-                (self.processor)(s, self.file_store.clone());
+                (self.processor)(video_data.borrow(), self.file_store.clone());
 
                 channel
                     .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
@@ -103,7 +104,7 @@ impl RabbitMq {
 }
 
 #[async_trait]
-impl MessageBroker for RabbitMq {
+impl<R: AsyncRead + Unpin + Send> MessageBroker for RabbitMq<R> {
     async fn listen(&self) -> Result<(), Error>{
         println!("I'm Here");
        let mut retry_interval = tokio::time::interval(Duration::from_secs(5));

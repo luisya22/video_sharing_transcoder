@@ -3,14 +3,17 @@ use std::error::Error;
 use std::sync::Arc;
 use deadpool_lapin::{Manager, Pool};
 use lapin::ConnectionProperties;
+use tokio::fs::File;
 use tokio_amqp::LapinTokioExt;
 use crate::filestore::{FileStore, S3Store};
 use crate::message_broker::{MessageBroker, RabbitMq};
+use crate::video::Video;
 
 mod transcoding;
 mod config;
 mod filestore;
 mod message_broker;
+mod video;
 
 
 pub async fn run() -> Result<(), Box<dyn Error>>{
@@ -51,7 +54,7 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
         let message_broker = RabbitMq{
             pool,
             queue_name,
-            processor: process_message as fn(&str, Arc<dyn FileStore + Send + Sync>),
+            processor: process_message as fn(&Video, Arc<dyn FileStore<File> + Send + Sync>),
             file_store: Arc::new(s3)
         };
 
@@ -63,8 +66,8 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-pub fn process_message(data: &str, filestore: Arc<dyn FileStore + Send + Sync>){
-    println!("This is the message: {:?}", data)
+pub fn process_message(data: &Video, filestore: Arc<dyn FileStore<File> + Send + Sync>){
+    println!("This is the message: {:?}", data);
 }
 
 
