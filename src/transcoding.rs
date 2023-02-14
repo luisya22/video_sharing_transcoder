@@ -3,6 +3,7 @@ use gst::prelude::*;
 // use gstreamer::{MessageView};
 use std::error::Error as StdError;
 use std::fmt;
+use std::io::sink;
 use crate::config::Config;
 
 #[derive(Debug)]
@@ -29,74 +30,129 @@ impl StdError for Error {
 }
 
 pub struct Transcoder {
-    access_key: String,
-    endpoint_uri: String,
-    secret_access_key: String,
+
 }
 
 impl Transcoder {
-    pub fn build(args: Config) -> Result<Transcoder, &'static str> {
-        let access_key = args.access_key;
-        let endpoint_uri = args.endpoint_uri;
-        let secret_access_key =  args.secret_access_key;
-
-        Ok(Transcoder{
-            access_key,
-            endpoint_uri,
-            secret_access_key,
-        })
+    pub fn build() -> Result<Transcoder, &'static str> {
+        Ok(Transcoder{})
     }
 
     pub fn transcode(&self, video_uri: &str) -> Result<String, Box<dyn StdError>>{
-        let str_arr = video_uri.split("/").collect::<Vec<&str>>();
-
-        if str_arr.len() < 2 {
-            return Err(Box::new(Error::new("video uri wrong format")))
-        }
-
         gst::init().unwrap();
 
-        let filesrc = gst::ElementFactory::make("awss3src").build()?;
-        let qtmux = gst::ElementFactory::make("qtmux").build()?;
+        let filesrc = gst::ElementFactory::make("filesrc").build()?;
+        let mpegtsmux = gst::ElementFactory::make("mpegtsmux").build()?;
         let filesink = gst::ElementFactory::make("hlssink2").build()?;
         let decodebin = gst::ElementFactory::make("decodebin").build()?;
         let x264enc = gst::ElementFactory::make("x264enc").build()?;
+        let h264parse = gst::ElementFactory::make("h264parse").build()?;
         let avenc_acc = gst::ElementFactory::make("avenc_aac").build()?;
+        let audioconvert = gst::ElementFactory::make("audioconvert").build()?;
         let video_queue = gst::ElementFactory::make("queue").build()?;
         let audio_queue = gst::ElementFactory::make("queue").build()?;
+        let tee = gst::ElementFactory::make("tee").build()?;
+        let tee_audio = gst::ElementFactory::make("tee").build()?;
+        let tee_audio_2 = gst::ElementFactory::make("tee").build()?;
+        let tee_audio_3 = gst::ElementFactory::make("tee").build()?;
 
-        filesrc.set_property("access_key", &self.access_key);
-        filesrc.set_property("endpoint_uir", &self.endpoint_uri);
-        filesrc.set_property("secret_access_key", &self.secret_access_key);
-        filesrc.set_property("uri", &video_uri);
+        let queue_480p = gst::ElementFactory::make("queue").build()?;
+        let videoconvert_480 = gst::ElementFactory::make("videoconvert").build()?;
+        let videoscale_480p = gst::ElementFactory::make("videoscale").build()?;
+        let x264enc_480p = gst::ElementFactory::make("x264enc").build()?;
+        let mpegtsmux_480p = gst::ElementFactory::make("mpegtsmux").build()?;
+        let hlssink_480p = gst::ElementFactory::make("hlssink2").build()?;
+        let audio_queue_480 = gst::ElementFactory::make("queue").build()?;
+        let audioconvert_480 = gst::ElementFactory::make("audioconvert").build()?;
+        let avenc_acc_480 = gst::ElementFactory::make("avenc_aac").build()?;
 
-        filesink.set_property("location", str_arr[1]);
+
+
+
+        filesrc.set_property("location", video_uri);
+
+        let target_duration: u32 = 6;
+        let max_files: u32 = 10000000;
+
+        filesink.set_property("location", "original_%08d.ts");
+        filesink.set_property("playlist-location", "video.m3u8");
+        filesink.set_property("target_duration", target_duration);
+        filesink.set_property("max-files", max_files);
+
+        hlssink_480p.set_property("location", "480_%08d.ts");
+        hlssink_480p.set_property("playlist-location", "video-480.m3u8");
+        hlssink_480p.set_property("target_duration", target_duration);
+        hlssink_480p.set_property("max-files", max_files);
+
 
         let pipeline = gst::Pipeline::new(None);
+
+
 
         pipeline.add_many(&[
             &filesrc,
             &decodebin,
-            &qtmux,
+            &mpegtsmux,
             &filesink,
             &x264enc,
+            &h264parse,
             &avenc_acc,
             &video_queue,
-            &audio_queue
+            &audio_queue,
+            &queue_480p,
+            &videoscale_480p,
+            &x264enc_480p,
+            &mpegtsmux_480p,
+            &videoconvert_480,
+            &hlssink_480p,
+            &audioconvert,
+            &tee,
+            &tee_audio,
+            &audio_queue_480,
+            &audioconvert_480,
+            &avenc_acc_480,
+            &tee_audio_2,
+            &tee_audio_3,
         ])?;
 
         filesrc.link(&decodebin)?;
 
         // Link Video
+        tee.link(&video_queue)?;
         video_queue.link(&x264enc)?;
-        x264enc.link(&qtmux)?;
+        x264enc.link(&filesink)?;
+
+
+        let width = 640;
+        let height = 480;
+        let bitrate = 2000 * 1000;
+
+        let caps_480 = gst::Caps::builder("video/x-raw")
+            .field("width", width)
+            .field("height", height)
+            .build();
+
+        tee.link(&queue_480p)?;
+        queue_480p.link(&videoconvert_480)?;
+        videoconvert_480.link(&videoscale_480p)?;
+        videoscale_480p.link_filtered(&x264enc_480p, &caps_480)?;
+        x264enc_480p.link(&hlssink_480p)?;
+
 
         // Link Audio
-        audio_queue.link(&avenc_acc)?;
-        avenc_acc.link(&qtmux)?;
+        tee_audio.link(&audio_queue)?;
+        audio_queue.link(&audioconvert)?;
+        audioconvert.link(&avenc_acc)?;
+        avenc_acc.link(&tee_audio_2)?;
+        tee_audio_2.link(&filesink)?;
 
+        tee_audio.link(&audio_queue_480)?;
+        audio_queue_480.link(&audioconvert_480)?;
+        audioconvert_480.link(&avenc_acc_480)?;
+        avenc_acc_480.link(&tee_audio_3)?;
+        tee_audio_3.link(&hlssink_480p)?;
 
-        qtmux.link(&filesink)?;
+        // mpegtsmux.link(&filesink)?;
 
         decodebin.connect_pad_added(move |demux, src_pad|{
             println!("Received new pad {} from {}", src_pad.name(), demux.name());
@@ -112,7 +168,7 @@ impl Transcoder {
             let new_pad_type = new_pad_struct.name();
 
             if new_pad_type.starts_with("audio"){
-                let sink_pad = audio_queue.static_pad("sink").unwrap();
+                let sink_pad = tee_audio.static_pad("sink").unwrap();
 
                 if sink_pad.is_linked(){
                     println!("Audio Pad already linked");
@@ -127,7 +183,7 @@ impl Transcoder {
                     println!("Linked successfully type {}:", new_pad_type)
                 }
             } else if new_pad_type.starts_with("video"){
-                let sink_pad = video_queue.static_pad("sink").unwrap();
+                let sink_pad = tee.static_pad("sink").unwrap();
 
                 if sink_pad.is_linked(){
                     println!("video pad already linked!");
@@ -137,9 +193,9 @@ impl Transcoder {
                 let res = src_pad.link(&sink_pad);
 
                 if res.is_err(){
-                    println!("type of {} linked faile:", new_pad_type);
+                    println!("type of {} linked failed:", new_pad_type);
                 }else {
-                    println!("Linked succesfully type of {}:", new_pad_type)
+                    println!("Linked succesfully type of {}:", new_pad_type);
                 }
             }
         });

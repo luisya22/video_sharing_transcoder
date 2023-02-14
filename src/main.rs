@@ -4,6 +4,8 @@ use std::error::Error;
 
 #[tokio::main]
 async fn main() {
+    
+    //TODO: Main should pass args
     let result = video_sharing_transcoder::run().await;
 
     match result {

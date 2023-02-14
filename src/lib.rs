@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::env;
 use std::error::Error;
 use std::sync::Arc;
@@ -5,15 +6,17 @@ use deadpool_lapin::{Manager, Pool};
 use lapin::ConnectionProperties;
 use tokio::fs::File;
 use tokio_amqp::LapinTokioExt;
+use crate::app::App;
 use crate::filestore::{FileStore, S3Store};
 use crate::message_broker::{MessageBroker, RabbitMq};
 use crate::video::Video;
 
-mod transcoding;
+pub mod transcoding;
 mod config;
 mod filestore;
 mod message_broker;
 mod video;
+mod app;
 
 
 pub async fn run() -> Result<(), Box<dyn Error>>{
@@ -54,11 +57,15 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
         let message_broker = RabbitMq{
             pool,
             queue_name,
-            processor: process_message as fn(&Video, Arc<dyn FileStore<File> + Send + Sync>),
-            file_store: Arc::new(s3)
         };
 
-        message_broker.listen().await?;
+        let app = App::<File>{
+            processor: process_message as fn(Video),
+            file_store: Arc::new(s3),
+            message_broker: Arc::new(message_broker),
+        };
+
+        app.message_broker.listen(app.processor).await?;
     } else {
         panic!("error: bucket not created")
     }
@@ -66,7 +73,7 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-pub fn process_message(data: &Video, filestore: Arc<dyn FileStore<File> + Send + Sync>){
+pub fn process_message(data: Video){
     println!("This is the message: {:?}", data);
 }
 
