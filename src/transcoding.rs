@@ -29,16 +29,22 @@ impl StdError for Error {
     }
 }
 
-pub struct Transcoder {
+pub trait Transcoder {
+   fn transcode(&self, path: &str) -> Result<String, Box<dyn StdError>>;
+}
+
+pub struct VideoTranscoder {
 
 }
 
-impl Transcoder {
-    pub fn build() -> Result<Transcoder, &'static str> {
-        Ok(Transcoder{})
+impl VideoTranscoder {
+    pub fn build() -> Result<VideoTranscoder, &'static str> {
+        Ok(VideoTranscoder {})
     }
+}
 
-    pub fn transcode(&self, video_uri: &str) -> Result<String, Box<dyn StdError>>{
+impl Transcoder for VideoTranscoder {
+     fn transcode(&self, video_uri: &str) -> Result<String, Box<dyn StdError>>{
         gst::init().unwrap();
 
         let filesrc = gst::ElementFactory::make("filesrc").build()?;

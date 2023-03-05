@@ -1,13 +1,14 @@
 use std::borrow::Borrow;
-use std::error::Error;
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io::{Error, Write};
 use tokio::io::{AsyncBufRead, AsyncReadExt, BufReader, AsyncRead};
 use async_trait::async_trait;
-use s3::{Bucket};
+use s3::Bucket;
 use s3::creds::Credentials;
 use s3::Region::Custom;
 use crate::filestore::FileStoreResult::{Failed, Success};
-
-
 
 
 #[derive(Debug)]
@@ -16,10 +17,21 @@ pub enum FileStoreResult {
     Failed,
 }
 
+#[derive(Debug)]
+pub struct FileFetchError{}
+
+impl Display for FileFetchError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Message not received")
+    }
+}
+
+impl StdError for FileFetchError{}
+
 #[async_trait]
 pub trait FileStore<R: AsyncRead + Unpin + Send>{
-    async fn put_object(&self, buffer_reader: BufReader<R>, path: &str) -> Result<FileStoreResult, Box<dyn Error>>;
-    fn get_object(&self) -> Result<(), Box<dyn Error>>;
+    async fn put_object(&self, buffer_reader: BufReader<R>, path: &str) -> Result<FileStoreResult, Box<dyn StdError>>;
+    async fn get_object(&self, file_name: &str, file_uri: &str) -> Result<&str, Box<dyn StdError>>;
 }
 
 pub struct Config {
@@ -65,7 +77,7 @@ impl S3Store {
 
 #[async_trait]
 impl<R: AsyncRead + Unpin + Send + 'static> FileStore<R> for S3Store {
-    async fn put_object(&self, mut buffer_reader: BufReader<R>, path: &str) -> Result<FileStoreResult, Box<dyn Error>> {
+    async fn put_object(&self, mut buffer_reader: BufReader<R>, path: &str) -> Result<FileStoreResult, Box<dyn StdError>> {
         // let mut reader = BufReader::new(file);
         let mut buffer = Vec::new();
 
@@ -81,7 +93,21 @@ impl<R: AsyncRead + Unpin + Send + 'static> FileStore<R> for S3Store {
         return Ok(Success);
     }
 
-    fn get_object(&self) -> Result<(), Box<dyn Error>> {
-        todo!()
+    async fn get_object(&self, file_name: &str,  file_uri: &str) -> Result<&str, Box<dyn StdError>> {
+        let mut filepath: &str = "/";
+
+        let response_data = self.bucket.get_object(file_uri).await?;
+
+        if response_data.status_code() != 200 {
+            return Err(FileFetchError{}.into());
+        }
+
+        //TODO: Save file and return path
+        let mut video_file = File::create(file_name)?;
+        video_file.write_all(response_data.bytes());
+
+        filepath.to_owned().push_str(file_name);
+
+        Ok(filepath)
     }
 }

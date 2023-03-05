@@ -15,6 +15,7 @@ use tokio::io::AsyncRead;
 use tokio_amqp::LapinTokioExt;
 use crate::video::Video;
 use serde_json::Error as SerdeJsonError;
+use crate::app::App;
 
 type RMQResult<T> = Result<T, PoolError>;
 type Connection = deadpool::managed::Object<deadpool_lapin::Manager>;
@@ -46,16 +47,17 @@ pub enum Error {
 }
 
 #[async_trait]
-pub trait MessageBroker {
-   async fn listen(&self, processor: fn(Video)) -> Result<(), Error>;
+pub trait MessageBroker{
+   async fn listen(&self) -> Result<(), Error>;
 }
 
-pub struct RabbitMq{
+pub struct RabbitMq<R: AsyncRead + Unpin + Send>{
     pub pool: Pool,
     pub queue_name: String,
+    pub app: App<R>
 }
 
-impl RabbitMq{
+impl<R: AsyncRead + Unpin + Send> RabbitMq<R>{
     async fn get_rmq_con(&self) ->RMQResult<Connection> {
         let connection = self.pool.get().await?;
 
@@ -116,8 +118,8 @@ impl RabbitMq{
 }
 
 #[async_trait]
-impl MessageBroker for RabbitMq {
-    async fn listen(&self, processor: fn(Video)) -> Result<(), Error>{
+impl<R: AsyncRead + Unpin + Send> MessageBroker for RabbitMq<R> {
+    async fn listen(&self) -> Result<(), Error>{
         println!("I'm Here");
        let mut retry_interval = tokio::time::interval(Duration::from_secs(5));
 
@@ -127,8 +129,7 @@ impl MessageBroker for RabbitMq {
 
             match self.init_rmq_listen().await {
                 Ok(video_data) => {
-                    let message_processor = processor;
-                    message_processor(video_data)
+                    self.app.process_message(video_data);
                 },
                 Err(e) => eprintln!("rmq listen had an error: {}", e)
             }

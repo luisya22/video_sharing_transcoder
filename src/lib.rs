@@ -9,6 +9,7 @@ use tokio_amqp::LapinTokioExt;
 use crate::app::App;
 use crate::filestore::{FileStore, S3Store};
 use crate::message_broker::{MessageBroker, RabbitMq};
+use crate::transcoding::VideoTranscoder;
 use crate::video::Video;
 
 pub mod transcoding;
@@ -17,6 +18,7 @@ mod filestore;
 mod message_broker;
 mod video;
 mod app;
+mod directory_upload_manager;
 
 
 pub async fn run() -> Result<(), Box<dyn Error>>{
@@ -54,18 +56,23 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
     let s3_store = S3Store::build(file_store_config);
 
     if let Some(s3) = s3_store {
-        let message_broker = RabbitMq{
-            pool,
-            queue_name,
-        };
+        let video_transcoder = VideoTranscoder::build()?;
 
         let app = App::<File>{
-            processor: process_message as fn(Video),
             file_store: Arc::new(s3),
-            message_broker: Arc::new(message_broker),
+            transcoder: Arc::new(video_transcoder),
+            directory_upload_manager: Arc::new(Box::pin(directory_upload_manager::upload_directory))
         };
 
-        app.message_broker.listen(app.processor).await?;
+        let message_broker = RabbitMq::<File>{
+            pool,
+            queue_name,
+            app
+        };
+
+
+
+        message_broker.listen().await?;
     } else {
         panic!("error: bucket not created")
     }
@@ -73,8 +80,10 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-pub fn process_message(data: Video){
-    println!("This is the message: {:?}", data);
+pub fn hello_world(){
+   println!("Hello World!");
 }
+
+
 
 
