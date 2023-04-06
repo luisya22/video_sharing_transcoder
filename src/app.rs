@@ -13,23 +13,23 @@ use crate::transcoding::Transcoder;
 use crate::video::Video;
 use crate::directory_upload_manager::UploadManager;
 
-pub struct App<R: AsyncRead + Unpin + Send> {
-    pub file_store: Arc<dyn FileStore<R> + Send + Sync>,
+pub struct App{
+    pub file_store: Arc<dyn FileStore>,
     pub transcoder: Arc<dyn Transcoder + Send + Sync>,
-    pub directory_upload_manager: Arc<dyn UploadManager<R>>,
+    pub directory_upload_manager: Arc<dyn UploadManager>,
 }
 
-impl<R: AsyncRead + Unpin + Send> App<R> {
+impl App{
   pub async fn process_message(&self, data: Video) -> Result<(), Box<dyn Error>>{
     println!("This is the message: {:?}", data);
 
     // Download Video
     let file_path = self.file_store.get_object(data.name.borrow(), data.path.borrow()).await?;
 
-    println!("{:?}", file_path.to_owned());
+    println!("File Path: {:?}", file_path.to_owned());
     
     // Transcode video
-    let video_chunks_path = self.transcoder.transcode(file_path)?; 
+    let video_chunks_path = self.transcoder.transcode(file_path.borrow())?; 
     // Upload Video chunks and masterplaylist
     // TODO: Move this to another struct or function attached to App. App should only glue items
     // not do any work
@@ -37,11 +37,11 @@ impl<R: AsyncRead + Unpin + Send> App<R> {
     let result = self.directory_upload_manager.upload_directory(&video_chunks_path, Arc::clone(&self.file_store)).await?;      
 
     match result {
-        Ok(_) => println!("Video Uploaded"),
-        Err(_) => println!("Video Upload Failed"),
+        () => println!("Video Uploaded"),
+        _ => println!("Video Upload Failed"),
     }
 
-    // Send message to RabbitMq
+    //TODO: Send message to RabbitMq
     
     Ok(())
 

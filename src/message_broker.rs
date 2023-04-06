@@ -51,13 +51,13 @@ pub trait MessageBroker{
    async fn listen(&self) -> Result<(), Error>;
 }
 
-pub struct RabbitMq<R: AsyncRead + Unpin + Send>{
+pub struct RabbitMq{
     pub pool: Pool,
     pub queue_name: String,
-    pub app: App<R>
+    pub app: App
 }
 
-impl<R: AsyncRead + Unpin + Send> RabbitMq<R>{
+impl RabbitMq{
     async fn get_rmq_con(&self) ->RMQResult<Connection> {
         let connection = self.pool.get().await?;
 
@@ -118,7 +118,7 @@ impl<R: AsyncRead + Unpin + Send> RabbitMq<R>{
 }
 
 #[async_trait]
-impl<R: AsyncRead + Unpin + Send> MessageBroker for RabbitMq<R> {
+impl MessageBroker for RabbitMq {
     async fn listen(&self) -> Result<(), Error>{
         println!("I'm Here");
        let mut retry_interval = tokio::time::interval(Duration::from_secs(5));
@@ -129,7 +129,12 @@ impl<R: AsyncRead + Unpin + Send> MessageBroker for RabbitMq<R> {
 
             match self.init_rmq_listen().await {
                 Ok(video_data) => {
-                    self.app.process_message(video_data);
+                    let result = self.app.process_message(video_data).await;
+
+                    match result {
+                        Ok(_) => println!("Success"),
+                        Err(e) => eprint!("{:?}", e),
+                    }
                 },
                 Err(e) => eprintln!("rmq listen had an error: {}", e)
             }

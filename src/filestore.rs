@@ -1,9 +1,9 @@
 use std::borrow::Borrow;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
-use std::fs::File;
+use tokio::fs::File;
 use std::io::{Error, Write};
-use tokio::io::{AsyncBufRead, AsyncReadExt, BufReader, AsyncRead};
+use tokio::io::{AsyncBufRead, AsyncReadExt, AsyncWriteExt, BufReader, AsyncRead};
 use async_trait::async_trait;
 use s3::Bucket;
 use s3::creds::Credentials;
@@ -29,17 +29,17 @@ impl Display for FileFetchError {
 impl StdError for FileFetchError{}
 
 #[async_trait]
-pub trait FileStore<R: AsyncRead + Unpin + Send>{
-    async fn put_object(&self, buffer_reader: BufReader<R>, path: &str) -> Result<FileStoreResult, Box<dyn StdError>>;
-    async fn get_object(&self, file_name: &str, file_uri: &str) -> Result<&str, Box<dyn StdError>>;
+pub trait FileStore: Send + Sync{
+    async fn put_object(&self, buffer_reader: BufReader<File>, path: &str) -> Result<FileStoreResult, Box<dyn StdError>>;
+    async fn get_object(&self, file_name: &str, file_uri: &str) -> Result<String, Box<dyn StdError>>;
 }
 
 pub struct Config {
-    pub(crate) access_key: Option<String>,
-    pub(crate) secret_key: Option<String>,
-    pub(crate) region: Option<String>,
-    pub(crate) bucket_name: Option<String>,
-    pub(crate) endpoint: Option<String>
+    pub access_key: Option<String>,
+    pub secret_key: Option<String>,
+    pub region: Option<String>,
+    pub bucket_name: Option<String>,
+    pub endpoint: Option<String>
 }
 
 
@@ -76,8 +76,8 @@ impl S3Store {
 }
 
 #[async_trait]
-impl<R: AsyncRead + Unpin + Send + 'static> FileStore<R> for S3Store {
-    async fn put_object(&self, mut buffer_reader: BufReader<R>, path: &str) -> Result<FileStoreResult, Box<dyn StdError>> {
+impl FileStore for S3Store {
+    async fn put_object(&self, mut buffer_reader: BufReader<File>, path: &str) -> Result<FileStoreResult, Box<dyn StdError>> {
         // let mut reader = BufReader::new(file);
         let mut buffer = Vec::new();
 
@@ -93,8 +93,8 @@ impl<R: AsyncRead + Unpin + Send + 'static> FileStore<R> for S3Store {
         return Ok(Success);
     }
 
-    async fn get_object(&self, file_name: &str,  file_uri: &str) -> Result<&str, Box<dyn StdError>> {
-        let mut filepath: &str = "/";
+    async fn get_object(&self, file_name: &str,  file_uri: &str) -> Result<String, Box<dyn StdError>> {
+        let path: String =  file_name.to_string();
 
         let response_data = self.bucket.get_object(file_uri).await?;
 
@@ -103,11 +103,11 @@ impl<R: AsyncRead + Unpin + Send + 'static> FileStore<R> for S3Store {
         }
 
         //TODO: Save file and return path
-        let mut video_file = File::create(file_name)?;
-        video_file.write_all(response_data.bytes());
+        let mut video_file = File::create(file_name).await?;
+        video_file.write_all(response_data.bytes()).await?;
 
-        filepath.to_owned().push_str(file_name);
+        path.to_owned().push_str(file_name);
 
-        Ok(filepath)
+        Ok(path)
     }
 }

@@ -77,16 +77,24 @@ impl Transcoder for VideoTranscoder {
 
         filesrc.set_property("location", video_uri);
 
+        let split = video_uri.split(".");
+        let vec: Vec<&str> = split.collect();
+        let path_str = vec[0];
+
+        let path = format!("{}_dir", path_str);
+
+        std::fs::create_dir_all(&path);
+
         let target_duration: u32 = 6;
         let max_files: u32 = 10000000;
 
-        filesink.set_property("location", "original_%08d.ts");
-        filesink.set_property("playlist-location", "video.m3u8");
+        filesink.set_property("location", format!("{}/original_%08d.ts", &path));
+        filesink.set_property("playlist-location", format!("{}/video.m3u8", &path));
         filesink.set_property("target_duration", target_duration);
         filesink.set_property("max-files", max_files);
 
-        hlssink_480p.set_property("location", "480_%08d.ts");
-        hlssink_480p.set_property("playlist-location", "video-480.m3u8");
+        hlssink_480p.set_property("location", format!("{}/480_%08d.ts", &path));
+        hlssink_480p.set_property("playlist-location", format!("{}/video-4890.m3u8", &path));
         hlssink_480p.set_property("target_duration", target_duration);
         hlssink_480p.set_property("max-files", max_files);
 
@@ -239,7 +247,7 @@ impl Transcoder for VideoTranscoder {
 
         pipeline.set_state(gst::State::Null)?;
 
-        Ok("".to_string())
+        Ok(path.to_owned())
     }
 }
 

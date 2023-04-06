@@ -5,15 +5,15 @@ use tokio::{fs::File, io::{BufReader, AsyncRead}};
 use crate::filestore::{FileStore, FileStoreResult};
 
 #[async_trait]
-pub trait UploadManager<R: AsyncRead + Unpin + Send> {
-    async fn upload_directory(&self, path: &str, filestore: Arc<dyn FileStore<Arc<R>>>) -> Result<(), Box<dyn Error>>;
+pub trait UploadManager: Sync + Send {
+    async fn upload_directory(&self, path: &str, filestore: Arc<dyn FileStore>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct DirectoryUploadManager {}
 
 #[async_trait]
-impl<R: AsyncRead + Unpin + Send> UploadManager<R> for DirectoryUploadManager{
-    async fn upload_directory(&self, path: &str, filestore: Arc<dyn FileStore<Arc<File>>>) -> Result<(), Box<dyn Error>>{
+impl UploadManager for DirectoryUploadManager{
+    async fn upload_directory(&self, path: &str, filestore: Arc<dyn FileStore>) -> Result<(), Box<dyn Error>>{
 
         let mut reader = tokio::fs::read_dir(path).await?;
 
@@ -33,19 +33,17 @@ impl<R: AsyncRead + Unpin + Send> UploadManager<R> for DirectoryUploadManager{
                 //
                 let filename = f.file_name().to_string_lossy().into_owned();
 
-                let mut filepath: String = path.to_owned();
+                let mut filepath: String = format!("/videos/{}", path.to_owned());
                 filepath.push_str(&filename);
 
 
-                let result = filestore.put_object(buf_reader, path).await?;
+                let result = filestore.put_object(buf_reader, &filepath).await?;
 
-                if let FileStoreResult::Success = result {
-                    println!("Error uploading file");
-                }
+                
 
                 match result {
                     FileStoreResult::Failed => println!("Error uploading file"),
-                    FileStoreResult::Success => {}
+                    FileStoreResult::Success => println!("{} uploaded", filepath),
                 }
 
             } else {
