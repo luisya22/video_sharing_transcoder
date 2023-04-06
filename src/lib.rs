@@ -11,14 +11,15 @@ use crate::filestore::{FileStore, S3Store};
 use crate::message_broker::{MessageBroker, RabbitMq};
 use crate::transcoding::VideoTranscoder;
 use crate::video::Video;
+use directory_upload_manager::DirectoryUploadManager;
 
 pub mod transcoding;
-mod config;
-mod filestore;
-mod message_broker;
-mod video;
-mod app;
-mod directory_upload_manager;
+pub mod config;
+pub mod filestore;
+pub mod message_broker;
+pub mod video;
+pub mod app;
+pub mod directory_upload_manager;
 
 
 pub async fn run() -> Result<(), Box<dyn Error>>{
@@ -58,13 +59,13 @@ pub async fn run() -> Result<(), Box<dyn Error>>{
     if let Some(s3) = s3_store {
         let video_transcoder = VideoTranscoder::build()?;
 
-        let app = App::<File>{
+        let app = App{
             file_store: Arc::new(s3),
             transcoder: Arc::new(video_transcoder),
-            directory_upload_manager: Arc::new(Box::pin(directory_upload_manager::upload_directory))
+            directory_upload_manager: Arc::new(DirectoryUploadManager{})
         };
 
-        let message_broker = RabbitMq::<File>{
+        let message_broker = RabbitMq{
             pool,
             queue_name,
             app
