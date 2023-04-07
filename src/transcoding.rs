@@ -5,6 +5,8 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::io::sink;
 use crate::config::Config;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 #[derive(Debug)]
 struct Error {
@@ -31,6 +33,7 @@ impl StdError for Error {
 
 pub trait Transcoder {
    fn transcode(&self, path: &str) -> Result<String, Box<dyn StdError>>;
+   fn generate_index_file(&self, path: &str) -> Result<(), Box<dyn StdError>>;
 }
 
 pub struct VideoTranscoder {
@@ -94,7 +97,7 @@ impl Transcoder for VideoTranscoder {
         filesink.set_property("max-files", max_files);
 
         hlssink_480p.set_property("location", format!("{}/480_%08d.ts", &path));
-        hlssink_480p.set_property("playlist-location", format!("{}/video-4890.m3u8", &path));
+        hlssink_480p.set_property("playlist-location", format!("{}/video-480.m3u8", &path));
         hlssink_480p.set_property("target_duration", target_duration);
         hlssink_480p.set_property("max-files", max_files);
 
@@ -247,7 +250,29 @@ impl Transcoder for VideoTranscoder {
 
         pipeline.set_state(gst::State::Null)?;
 
+        self.generate_index_file(&path)?;
+
         Ok(path.to_owned())
+    }
+
+    fn generate_index_file(&self, path: &str) -> Result<(), Box<dyn StdError>> {
+
+        let path_480 = "video-480.m3u8";
+        let path_original = "video.m3u8";
+        let mut index_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(format!("./{}/index.m3u8", &path))?;
+
+        writeln!(index_file, "{}\n", "#EXTM3U")?;
+        writeln!(index_file, "{}\n", "#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=853x480")?;
+        writeln!(index_file, "{}\n", path_480)?;
+        writeln!(index_file, "{}\n", "#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080")?;
+        writeln!(index_file, "{}\n", path_original)?;
+
+
+
+        Ok(())
     }
 }
 
