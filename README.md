@@ -1,6 +1,7 @@
 # Video Sharing Transcoder
+
 ## Overview
-The Video Sharing Transcoder service is responsible for transcoding video files and generating HLS playlists. It communicates with the (Video Sharing API)[https://github.com/luisya22/video-sharing-go] to process video uploads and manage transcoding tasks. The transcoding process involves converting video files into multiple resolutions and creating HLS playlists.
+The Video Sharing Transcoder service is responsible for transcoding video files and generating HLS playlists. It communicates with the [Video Sharing API](https://github.com/luisya22/video-sharing-go) to process video uploads and manage transcoding tasks. The transcoding process involves converting video files into multiple resolutions and creating HLS playlists.
 
 ## Features
 - *Transcode Video:* Converts video files into diffferent resolutions and formats.
@@ -47,12 +48,12 @@ POOL_QUANTITY=1
   cargo run --release
   ```
 
-## Message Processsing
+## Message Processing
 The service listens to RabbitMQ messages for new video uploads. When a message is received, it downloads the video file from S3, trancodes it, uploads the chunks back to S3, and sends a message with the path to the generated index file.
 
 ## License
 This project is licensed under the MIT License.
 
 ---
-For more details about the Video Sharing API, refer to its (repository)[https://github.com/luisya22/video-sharing-go]
+For more details about the Video Sharing API, refer to its [repository](https://github.com/luisya22/video-sharing-go)
 
